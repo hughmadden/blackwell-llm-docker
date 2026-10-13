@@ -54,7 +54,10 @@ defaults:
   additional-config: {glm53_kda_decode_backend: auto, kda_prefill_backend: b12x}
   reasoning-parser: glm45
   tool-call-parser: glm47
-  default-chat-template-kwargs: {reasoning_effort: high, clear_thinking: false}
+  # Max reasoning: at High, GLM-5.3-Flash quotes a looked-up row at once and confuses near-duplicate IDs in long
+  # documents (516K-token record lookups: 117/136 correct at High, 136/136 at Max). Requests can still ask for
+  # reasoning_effort high or low.
+  default-chat-template-kwargs: {reasoning_effort: max, clear_thinking: false}
   # The official template with assistant content rendered as generated, so a
   # returned answer re-renders to the same tokens and reuses its checkpoint.
   chat-template: runtime:templates/glm53-flash.jinja

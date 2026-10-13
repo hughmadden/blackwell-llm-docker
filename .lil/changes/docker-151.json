@@ -1,0 +1,14 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-151",
+  "category": "fix",
+  "summary": "GLM-5.3-Flash reasons at max effort by default",
+  "models": ["GLM-5.3-Flash"],
+  "compatibility": "Answers carry a little more reasoning. To keep the previous behaviour, send chat_template_kwargs {\"reasoning_effort\": \"high\"} or set DEFAULT_CHAT_TEMPLATE_KWARGS='{\"reasoning_effort\":\"high\",\"clear_thinking\":false}'.",
+  "details": [
+    "The glm53-flash profile now sets reasoning_effort max (was high); clear_thinking stays false. GLM-5.3 (744B) keeps high.",
+    "At high the model quoted a looked-up row at once and confused near-duplicate record IDs in 516K-token documents. Default glm53-tp2 compose, temperature 0, record lookups: high 117/136 correct, max 136/136; on this task the answer grew by about 20 tokens."
+  ],
+  "pull_requests": [151],
+  "requires": []
+}

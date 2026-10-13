@@ -241,8 +241,8 @@ different recommendations; disabling thinking alone does not automatically
 change request sampling. A command that bypasses the model launcher must set
 its own generation policy or retain the publisher's checkpoint metadata.
 
-GLM's community chat defaults remain `reasoning_effort=high` and
-`clear_thinking=false`. Sampling defaults do not clear historical reasoning,
+GLM-5.3-Flash defaults to `reasoning_effort=max` and `clear_thinking=false`;
+at `high` it confused near-duplicate record IDs in 516K-token lookups. Sampling defaults do not clear historical reasoning,
 truncate prompts, change the target KV dtype or quantize model weights.
 
 ### DeepSeek V4 model profiles
@@ -354,11 +354,11 @@ The latter checkpoint contains offline MXFP8 draft weights. A changed model or
 runtime identity cannot reuse an incompatible external recurrent checkpoint.
 
 The GLM launcher supplies `--default-chat-template-kwargs
-'{"reasoning_effort":"high","clear_thinking":false}'`.
+'{"reasoning_effort":"max","clear_thinking":false}'`.
 A chat request can override the reasoning default with
 `"reasoning_effort":"max"`, `"high"`, or `"low"`; this does not change
-`max_tokens` or the parser. Without a server/request override, the checkpoint's
-chat template selects `max`. Direct `vllm serve` commands bypass this launcher's
+`max_tokens` or the parser. Without any override, the checkpoint's chat template
+also selects `max`. Direct `vllm serve` commands bypass this launcher's
 defaults and must provide the option themselves.
 
 The launcher also serves `runtime/templates/glm53-flash.jinja` as

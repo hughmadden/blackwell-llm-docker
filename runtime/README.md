@@ -441,8 +441,9 @@ time per step is the same.
 
 GLM and DeepSeek retain the source launchers' temperature 1/top-p 0.95
 server defaults. Explicit generation configuration replaces these defaults;
-request sampling remains authoritative. GLM retains `reasoning_effort=high`
-and `clear_thinking=false`. No profile changes target weight or KV precision
+request sampling remains authoritative. GLM-5.3-Flash sets
+`reasoning_effort=max` (at `high` it confused near-duplicate record IDs in
+516K-token lookups) and GLM-5.3 keeps `high`; both set `clear_thinking=false`. No profile changes target weight or KV precision
 to manufacture a speedup.
 
 GLM serves `runtime/templates/glm53-flash.jinja`: the checkpoint's chat
