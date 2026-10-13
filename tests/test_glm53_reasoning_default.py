@@ -36,16 +36,16 @@ class ReasoningDefaultTest(unittest.TestCase):
         self.assertTrue(values)
         return values[-1]
 
-    def test_high_for_both_speculator_families(self):
+    def test_max_for_both_speculator_families(self):
         for mode in ("mtp", "dflash2"):
             with self.subTest(mode=mode):
                 self.assertEqual(
                     self.defaults(self.command(mode)),
-                    {"reasoning_effort": "high", "clear_thinking": False},
+                    {"reasoning_effort": "max", "clear_thinking": False},
                 )
 
     def test_operator_can_override_default_json(self):
-        override = {"reasoning_effort": "max", "clear_thinking": True}
+        override = {"reasoning_effort": "high", "clear_thinking": True}
         self.assertEqual(
             self.defaults(
                 self.command("mtp", "--default-chat-template-kwargs", json.dumps(override))

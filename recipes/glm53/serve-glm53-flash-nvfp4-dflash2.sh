@@ -257,7 +257,7 @@ cmd=(
 if ((chat_defaults_from_cli == 0)); then
   # Preserve reasoning at its original assistant turn for agent continuations.
   # Request template kwargs remain authoritative over these server defaults.
-  cmd+=(--default-chat-template-kwargs '{"reasoning_effort":"high","clear_thinking":false}')
+  cmd+=(--default-chat-template-kwargs '{"reasoning_effort":"max","clear_thinking":false}')
 fi
 
 if ((generation_defaults_from_cli == 0)); then

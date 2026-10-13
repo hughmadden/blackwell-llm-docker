@@ -1045,7 +1045,9 @@ options:
       glm53: >-
         GLM-5.3 sets reasoning_effort high.
       glm53-flash: >-
-        GLM-5.3-Flash sets reasoning_effort high and clear_thinking false.
+        GLM-5.3-Flash sets reasoning_effort max and clear_thinking false. At high it quotes a looked-up
+        row at once and confused near-duplicate record IDs in 516K-token lookups (117/136 correct against
+        136/136 at max); requests can still ask for high or low.
       ds4-flash: >-
         DeepSeek-V4-Flash sets thinking true and reasoning_effort high, as its source launcher does.
       ds4-vision: >-
