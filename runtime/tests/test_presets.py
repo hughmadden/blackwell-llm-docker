@@ -14,7 +14,9 @@ from runtime.packaging import audit_image_metadata, owned_environment, payload_s
 
 TP2_KV = 7650410496
 QAD_CHECKPOINT = "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"
-QAD_REVISION = "dec48abd33efa73c3bb7c95b74eee10cad34f9be"
+QAD_REVISION = "0a0417631b4065d16e9639f327f44a0a4237a537"
+# Served by images whose vLLM predates VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE.
+QAD_FALLBACK_REVISION = "dec48abd33efa73c3bb7c95b74eee10cad34f9be"
 
 
 @pytest.fixture(autouse=True)
@@ -392,6 +394,8 @@ def test_tp2_preset_serves_the_stored_qad_checkpoint():
         "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "65536",
         "VLLM_GLM53_EMBED_HOST": "1",
         "VLLM_SHARE_PYNCCL_COMMS": "1",
+        "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE": "prefill",
+        "VLLM_GLM53_MTP_DRAFT_HEAD": "bf16",
         "VLLM_B12X_MOE_FP4_FORCE_A16": "1",
         "B12X_W4A16_FP32_TOPK_WEIGHTS": "1",
         "B12X_W4A16_A4_PREFILL_MIN_TOKENS": "1536",
@@ -403,6 +407,33 @@ def test_tp2_preset_serves_the_stored_qad_checkpoint():
     # The RAM tier only: no disk adapter, and the L1 arena may fit the host.
     assert "--l2-adapter" not in plan.cache_service.argv
     assert plan.cache_service.l1_adjustable
+
+
+def test_tp2_keeps_the_earlier_revision_on_a_vllm_without_kda_w8a16():
+    """The mixed-format KDA checkpoint needs vLLM PR 1027; older images keep dec48abd."""
+    current = tp2(
+        vllm_environment=frozenset(
+            {
+                "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE",
+                "VLLM_GLM53_MTP_DRAFT_HEAD",
+                "VLLM_USE_V2_MODEL_RUNNER",
+            }
+        )
+    )
+    assert current.values["revision"] == QAD_REVISION
+    assert current.environment["VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE"] == "prefill"
+    older = tp2(
+        vllm_environment=frozenset(
+            {"VLLM_GLM53_MTP_DRAFT_HEAD", "VLLM_USE_V2_MODEL_RUNNER"}
+        )
+    )
+    assert older.values["revision"] == QAD_FALLBACK_REVISION
+    assert older.values["speculative-config"]["revision"] == QAD_FALLBACK_REVISION
+    assert "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE" not in older.environment
+    # The earlier revision has a BF16 LM head and keeps the profile's NVFP4 drafter.
+    assert older.environment["VLLM_GLM53_MTP_DRAFT_HEAD"] == "nvfp4"
+    assert current.environment["VLLM_GLM53_MTP_DRAFT_HEAD"] == "bf16"
+    assert "fallback" in older.origins["revision"]
 
 
 def test_tp2_is_described_as_the_default_tp2_recipe():

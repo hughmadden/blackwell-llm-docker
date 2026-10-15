@@ -23,6 +23,7 @@ manifests:
 # digest serves a pinned revision that is not cached.
 contents:
   local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD:
+    0a0417631b4065d16e9639f327f44a0a4237a537: 51ee067e722bae831aee503f6f0c628245c1ae855757d84e266588fa4cda9dff
     dec48abd33efa73c3bb7c95b74eee10cad34f9be: bc453166d2d32020847a51d8aedab725bf96c9e6e25635181c8a0ca49530ec0e
   local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD:
     dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2: 96c3914477a4077abc70563695f554407ff0e972eab145bbcf046d0d98826fce
