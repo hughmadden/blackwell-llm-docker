@@ -14,9 +14,18 @@ from runtime.packaging import audit_image_metadata, owned_environment, payload_s
 
 TP2_KV = 7650410496
 QAD_CHECKPOINT = "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"
-QAD_REVISION = "0a0417631b4065d16e9639f327f44a0a4237a537"
+QAD_REVISION = "96f27f8c4e443be5bc486f8a978e3b9e0d3f7125"
+# The same weights with slab CSF scales, for images without the CSF block loader.
+QAD_SLAB_REVISION = "0a0417631b4065d16e9639f327f44a0a4237a537"
 # Served by images whose vLLM predates VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE.
 QAD_FALLBACK_REVISION = "dec48abd33efa73c3bb7c95b74eee10cad34f9be"
+KDA_W8A16 = frozenset(
+    {
+        "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE",
+        "VLLM_GLM53_MTP_DRAFT_HEAD",
+        "VLLM_USE_V2_MODEL_RUNNER",
+    }
+)
 
 
 @pytest.fixture(autouse=True)
@@ -278,6 +287,55 @@ def test_a_preset_keeps_its_fallback_recipe_on_an_older_vllm(monkeypatch):
     assert chosen.values["kv-cache-memory-bytes"] == 3758096384
 
 
+@pytest.mark.parametrize(
+    "modelopt,block_loader,expected",
+    [
+        ('if encoding not in ("csf", "csf_32x2_v1"):\n', True, {"csf", "csf_32x2_v1"}),
+        ('if encoding not in ("csf", "csf_32x2_v1"):\n', False, {"csf"}),
+        ('if encoding != "csf":\n', True, {"csf"}),
+    ],
+)
+def test_installed_csf_encodings_need_vllm_and_the_b12x_block_loader(
+    tmp_path, monkeypatch, modelopt, block_loader, expected
+):
+    vllm = tmp_path / "vllm"
+    (vllm / "model_executor/layers/quantization").mkdir(parents=True)
+    (vllm / "__init__.py").write_text("raise RuntimeError('must not import')\n")
+    (vllm / "model_executor/layers/quantization/modelopt.py").write_text(modelopt)
+    flashinfer = tmp_path / "flashinfer"
+    (flashinfer / "experimental/b12x/loader").mkdir(parents=True)
+    (flashinfer / "__init__.py").write_text("raise RuntimeError('must not import')\n")
+    if block_loader:
+        (flashinfer / "experimental/b12x/loader/_csf_blocks.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    assert launcher.installed_csf_encodings() == frozenset(expected)
+
+
+def test_a_csf_32x2_v1_checkpoint_is_an_hf_layout_csf_checkpoint(tmp_path, monkeypatch):
+    config = {
+        "quantization_config": {
+            "quant_method": "modelopt",
+            "quantized_layers": {
+                "model.layers.3.mlp.experts": {
+                    "quant_algo": "NVFP4",
+                    "weight_scale_encoding": "csf_32x2_v1",
+                }
+            },
+        }
+    }
+    (tmp_path / "config.json").write_text(json.dumps(config))
+    (tmp_path / "model.safetensors.index.json").write_text('{"weight_map": {}}')
+    assert launcher.csf_hf_layout(tmp_path)
+    assert launcher.csf_hf_encodings(tmp_path) == frozenset({"csf_32x2_v1"})
+    monkeypatch.setattr(launcher, "installed_csf_encodings", lambda: frozenset({"csf"}))
+    with pytest.raises(ConfigError, match="csf_32x2_v1; this image reads csf"):
+        launcher.require_readable_csf_encodings(tmp_path, "checkpoint")
+    monkeypatch.setattr(
+        launcher, "installed_csf_encodings", lambda: frozenset(launcher.CSF_ENCODINGS)
+    )
+    launcher.require_readable_csf_encodings(tmp_path, "checkpoint")
+
+
 def test_installed_vllm_environment_reads_envs_without_importing(tmp_path, monkeypatch):
     from runtime.launcher import installed_vllm_environment
 
@@ -409,23 +467,34 @@ def test_tp2_preset_serves_the_stored_qad_checkpoint():
     assert plan.cache_service.l1_adjustable
 
 
+def test_tp2_serves_slab_csf_scales_without_the_csf_block_loader():
+    """csf_32x2_v1 needs vLLM PR 1029 and FlashInfer's block loader; images
+    without them serve the same weights with slab CSF scales."""
+    blocks = tp2(
+        vllm_environment=KDA_W8A16,
+        csf_encodings=frozenset({"csf", "csf_32x2_v1"}),
+    )
+    assert blocks.values["revision"] == QAD_REVISION
+    assert "fallback" not in blocks.origins["revision"]
+    slab = tp2(vllm_environment=KDA_W8A16, csf_encodings=frozenset({"csf"}))
+    assert slab.values["revision"] == QAD_SLAB_REVISION
+    assert slab.values["speculative-config"]["revision"] == QAD_SLAB_REVISION
+    assert "csf_32x2_v1" in slab.origins["revision"]
+    # The slab revision keeps the KDA W8A16 recipe and the shared draft head.
+    assert slab.environment["VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE"] == "prefill"
+    assert slab.environment["VLLM_GLM53_MTP_DRAFT_HEAD"] == "bf16"
+
+
 def test_tp2_keeps_the_earlier_revision_on_a_vllm_without_kda_w8a16():
     """The mixed-format KDA checkpoint needs vLLM PR 1027; older images keep dec48abd."""
-    current = tp2(
-        vllm_environment=frozenset(
-            {
-                "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE",
-                "VLLM_GLM53_MTP_DRAFT_HEAD",
-                "VLLM_USE_V2_MODEL_RUNNER",
-            }
-        )
-    )
+    current = tp2(vllm_environment=KDA_W8A16)
     assert current.values["revision"] == QAD_REVISION
     assert current.environment["VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE"] == "prefill"
     older = tp2(
         vllm_environment=frozenset(
             {"VLLM_GLM53_MTP_DRAFT_HEAD", "VLLM_USE_V2_MODEL_RUNNER"}
-        )
+        ),
+        csf_encodings=frozenset({"csf"}),
     )
     assert older.values["revision"] == QAD_FALLBACK_REVISION
     assert older.values["speculative-config"]["revision"] == QAD_FALLBACK_REVISION

@@ -1,0 +1,14 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-155",
+  "category": "feature",
+  "summary": "The default GLM-5.3-Flash TP2 preset serves the checkpoint with csf_32x2_v1 expert scales through FlashInfer's new CSF path",
+  "models": ["GLM-5.3-Flash"],
+  "compatibility": "PRESET=glm53-tp2 downloads revision 96f27f8c of branch qad2-kda-w8a16-csf (the same weights as 0a041763, with routed-expert scales in the csf_32x2_v1 block encoding; about 177 GB). Images without FlashInfer's CSF block loader keep serving 0a041763.",
+  "details": [
+    "The launcher recognizes FP4-CSF checkpoints whose ModelOpt recipes use the csf_32x2_v1 scale encoding and refuses one before downloading it when the image's vLLM or B12X cannot read that encoding.",
+    "Deployment presets can list several fallbacks, each for an image without the named vLLM variables or CSF scale encodings; glm53-tp2 falls back to the slab-CSF revision 0a041763, and on a vLLM without VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE to dec48abd."
+  ],
+  "pull_requests": [155],
+  "requires": ["vllm-csf-block-loader"]
+}
