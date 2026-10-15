@@ -168,7 +168,9 @@ def valid_preset_fallback(entry: Any, preset: dict) -> bool:
     encodings = entry.get("requires_csf_encodings", [])
     return (
         isinstance(environment, list)
-        and all(isinstance(key, str) and key in preset["environment"] for key in environment)
+        and all(
+            isinstance(key, str) and key in preset["environment"] for key in environment
+        )
         and isinstance(encodings, list)
         and all(encoding in CSF_ENCODINGS for encoding in encodings)
     )
@@ -1681,7 +1683,8 @@ def csf_hf_layout(root: Path) -> bool:
     quant = (holder or {}).get("quantization_config") or {}
     layers = quant.get("quantized_layers") or {}
     return (root / "model.safetensors.index.json").is_file() and any(
-        isinstance(recipe, dict) and recipe.get("weight_scale_encoding") in CSF_ENCODINGS
+        isinstance(recipe, dict)
+        and recipe.get("weight_scale_encoding") in CSF_ENCODINGS
         for recipe in layers.values()
     )
 
