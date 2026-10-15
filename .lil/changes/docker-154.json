@@ -1,0 +1,14 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-154",
+  "category": "fix",
+  "summary": "The default GLM-5.3-Flash TP2 preset serves the new QAD checkpoint with BF16 KDA gates and W8A16 KDA prefill for better long-context recall",
+  "models": ["GLM-5.3-Flash"],
+  "compatibility": "PRESET=glm53-tp2 downloads a new checkpoint revision (about 177 GB, branch qad2-kda-w8a16-csf of GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD). Images whose vLLM lacks VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE keep serving revision dec48abd.",
+  "details": [
+    "The preset serves revision 0a0417631b: the step3171 QAD weights with the official BF16 KDA gates, DSA indexer and MLA kv_b, MXFP8 KDA q/k/v/o and FP4-CSF expert scales, and sets VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE=prefill.",
+    "516K-token record lookup with near-duplicate IDs (temperature 1, reasoning effort high, about 3000 samples): 79.6% vs 72.1% for dec48abd and 76.2% for the step3171 QAD as published. The cold 516K prefill stays at about 53 s."
+  ],
+  "pull_requests": [154],
+  "requires": []
+}
