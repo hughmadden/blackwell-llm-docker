@@ -56,10 +56,13 @@ docker run -d --name glm-tp2 --init --gpus '"device=0,1"' \
   -e PRESET=glm53-tp2 -e PORT=8000 "$LIL_IMAGE"
 ```
 
-It serves the QAD weights from the stored checkpoint
-`local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` at revision `dec48abd`:
-MXFP8 attention and shared experts, and NVFP4 routed experts whose scales stay
-losslessly compressed (FP4-CSF). The routed experts decode with BF16
+It serves the `qad2-kda-w8a16-csf` revision (`0a041763`) of
+`local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD`: the step3171 QAD
+weights with the official BF16 KDA gates, DSA indexer and MLA kv_b, block-FP8
+MLA projections and shared experts, MXFP8 KDA q/k/v/o projections that prefill
+with BF16 activations (`VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE=prefill`), and
+NVFP4 routed experts whose scales stay losslessly compressed (FP4-CSF). Images
+whose vLLM predates that variable serve the earlier QAD revision `dec48abd`. The routed experts decode with BF16
 activations and FP32 router weights (W4A16) and prefill with NVFP4 activations
 (`PREFILL_ACTIVATIONS=a4`): long prompts run on FP4 tensor cores while
 generation keeps the precise path. It runs TP2/DCP2, MTP3 with B12X drafter

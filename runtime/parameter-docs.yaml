@@ -2183,6 +2183,25 @@ environment:
         GLM-5.3-Flash sets 0 because reserving the 84 MB maximum lowered 32k prefill from 14,439 to
         13,963 tok/s and C12 DFlash verifier throughput from 350.60 to 339.38 steps/s, as recorded in
         the vLLM source.
+  VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE:
+    group: precision
+    summary: >-
+      Activation precision of the GLM-5.3 KDA projections stored as B12X MXFP8. auto (default) follows
+      VLLM_B12X_MXFP8_ACTIVATION_MODE, which runs calls above 8 rows W8A8; a16 keeps BF16 activations
+      (W8A16) for every call; prefill does so for calls of at least 128 rows and leaves shorter calls to
+      auto. Read by vLLM from PR 1027 on.
+    why: >-
+      Quantizing the activations of these projections to MXFP8 during a long prefill costs long-context
+      recall when the small gating and indexer layers are BF16. B12X runs prefill-sized W8A16 MXFP8 calls
+      as a BF16 GEMM over the expanded weight (FlashInfer PR 15), about 1% of prefill time, while
+      decode-sized W8A16 calls are 2-3x slower than W8A8, so prefill limits BF16 activations to
+      prefill-sized calls.
+    presets:
+      glm53-tp2: >-
+        The glm53-tp2 preset sets prefill with the qad2-kda-w8a16-csf checkpoint revision (official BF16
+        KDA gates, indexer and kv_b). On a 516K-token lookup test (16 hard records, temperature 1, about
+        3000 samples) recall rose from 76.5% (auto) to 79.6%; the cold 516K prefill took 52.9 s. Images
+        whose vLLM lacks the variable keep the earlier revision through the preset fallback.
   VLLM_GLM53_MTP_DRAFT_HEAD:
     group: speculation
     summary: Selects the vocabulary head used only for GLM-5.3 MTP draft logits; bf16 (default) shares

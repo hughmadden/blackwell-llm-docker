@@ -3,11 +3,11 @@ presets:
   glm53-tp2:
     profile: glm53-flash
     hardware: rtx-pro-6000-pcie
-    description: The default TP2 recipe for GLM-5.3-Flash on two 96-GB RTX PRO GPUs. It serves the QAD weights from the stored checkpoint GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD (MXFP8 attention and shared experts, NVFP4 routed experts with losslessly compressed scales). The routed experts decode with BF16 activations and FP32 router weights and prefill with NVFP4 activations. It runs TP2/DCP2, MTP3 with B12X drafter experts, eight request slots, a 4096-token prefill budget and a 7,296 MiB KV cache per GPU (about 1.84M tokens), and LMCache keeps the prefix cache in up to 64 GiB of host RAM as well. The input embedding table lives in host RAM; the checkpoint stores the vision tower with MXFP8 attention and W4A16 NVFP4 MLPs.
+    description: The default TP2 recipe for GLM-5.3-Flash on two 96-GB RTX PRO GPUs. It serves the qad2-kda-w8a16-csf revision of GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, the step3171 QAD weights with the official BF16 KDA gates, DSA indexer and MLA kv_b, block-FP8 MLA projections and shared experts, MXFP8 KDA q/k/v/o projections that prefill with BF16 activations (W8A16), and NVFP4 routed experts with losslessly compressed scales. Images whose vLLM predates VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE serve the earlier QAD revision dec48abd instead. The routed experts decode with BF16 activations and FP32 router weights and prefill with NVFP4 activations. It runs TP2/DCP2, MTP3 with B12X drafter experts, eight request slots, a 4096-token prefill budget and a 7,296 MiB KV cache per GPU (about 1.84M tokens), and LMCache keeps the prefix cache in up to 64 GiB of host RAM as well. The input embedding table lives in host RAM; the checkpoint stores the vision tower with MXFP8 attention and W4A16 NVFP4 MLPs.
     options:
       # Stored QAD checkpoint in FP4-CSF form; CHECKPOINT=original does not apply.
       model: local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD
-      revision: dec48abd33efa73c3bb7c95b74eee10cad34f9be
+      revision: 0a0417631b4065d16e9639f327f44a0a4237a537
       quantization: nvfp4_csf
       load-format: nvfp4_csf
       served-model-name: GLM-5.3-Flash
@@ -56,11 +56,23 @@ presets:
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True,large_segment_size_mb:12
       VLLM_GLM53_EMBED_HOST: "1"
       VLLM_SHARE_PYNCCL_COMMS: "1"
+      # BF16 activations for the MXFP8 KDA projections in prefill-sized calls
+      # (128+ rows); decode-sized calls stay W8A8. With the official BF16 KDA
+      # gates, indexer and kv_b this lifts 516K long-context recall from 76.5%
+      # to 79.6% at about 1% prefill (FlashInfer PR 15).
+      VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE: prefill
     modes:
       mtp:
         config: {moe_backend: b12x}
     linked_options:
       cache-object-tokens: max-num-batched-tokens
+    # An image whose vLLM predates VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE (vLLM
+    # PR 1027) cannot load the mixed-format KDA projections of the current
+    # revision and keeps serving the earlier QAD revision.
+    vllm_fallback:
+      requires_environment: [VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE]
+      options:
+        revision: dec48abd33efa73c3bb7c95b74eee10cad34f9be
     # Working memory per request slot above eight, carried over from the
     # Spark TP2 measurements. The KV size above already leaves room for the
     # LMCache connector's GPU buffers, so CACHE_MODE=vram keeps it as is.
