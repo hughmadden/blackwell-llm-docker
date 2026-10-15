@@ -1,0 +1,13 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-156",
+  "category": "internal",
+  "summary": "The launcher's CSF fallback and encoding checks are formatted to the repository's ruff style; no behavior change",
+  "models": ["GLM-5.3-Flash"],
+  "compatibility": "No user action required.",
+  "details": [
+    "Formatting only, for the ruff format check of the model runtime profiles CI."
+  ],
+  "pull_requests": [156],
+  "requires": []
+}
