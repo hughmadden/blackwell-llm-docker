@@ -2212,6 +2212,10 @@ environment:
         GLM-5.3-Flash sets nvfp4, the private NVFP4 draft vocabulary head of the GLM MTP recipe
         (runtime/README.md).
     presets:
+      glm53-tp2: >-
+        The glm53-tp2 preset sets bf16: its qad2-kda-w8a16-csf checkpoint stores the trained LM head in
+        MXFP8, from which the private NVFP4 draft copy cannot be built, so the drafter shares the target
+        head. Images on the earlier revision (preset fallback) keep the profile's nvfp4.
       glm53-dgx-spark-x2: >-
         The DGX Spark hardware profile sets bf16: the BF16 draft head shares the target's vocabulary
         head, and an NVFP4 copy would cost memory the KV cache needs.

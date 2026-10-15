@@ -395,6 +395,7 @@ def test_tp2_preset_serves_the_stored_qad_checkpoint():
         "VLLM_GLM53_EMBED_HOST": "1",
         "VLLM_SHARE_PYNCCL_COMMS": "1",
         "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE": "prefill",
+        "VLLM_GLM53_MTP_DRAFT_HEAD": "bf16",
         "VLLM_B12X_MOE_FP4_FORCE_A16": "1",
         "B12X_W4A16_FP32_TOPK_WEIGHTS": "1",
         "B12X_W4A16_A4_PREFILL_MIN_TOKENS": "1536",
@@ -412,15 +413,26 @@ def test_tp2_keeps_the_earlier_revision_on_a_vllm_without_kda_w8a16():
     """The mixed-format KDA checkpoint needs vLLM PR 1027; older images keep dec48abd."""
     current = tp2(
         vllm_environment=frozenset(
-            {"VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE", "VLLM_USE_V2_MODEL_RUNNER"}
+            {
+                "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE",
+                "VLLM_GLM53_MTP_DRAFT_HEAD",
+                "VLLM_USE_V2_MODEL_RUNNER",
+            }
         )
     )
     assert current.values["revision"] == QAD_REVISION
     assert current.environment["VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE"] == "prefill"
-    older = tp2(vllm_environment=frozenset({"VLLM_USE_V2_MODEL_RUNNER"}))
+    older = tp2(
+        vllm_environment=frozenset(
+            {"VLLM_GLM53_MTP_DRAFT_HEAD", "VLLM_USE_V2_MODEL_RUNNER"}
+        )
+    )
     assert older.values["revision"] == QAD_FALLBACK_REVISION
     assert older.values["speculative-config"]["revision"] == QAD_FALLBACK_REVISION
     assert "VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE" not in older.environment
+    # The earlier revision has a BF16 LM head and keeps the profile's NVFP4 drafter.
+    assert older.environment["VLLM_GLM53_MTP_DRAFT_HEAD"] == "nvfp4"
+    assert current.environment["VLLM_GLM53_MTP_DRAFT_HEAD"] == "bf16"
     assert "fallback" in older.origins["revision"]
 
 

@@ -61,6 +61,9 @@ presets:
       # gates, indexer and kv_b this lifts 516K long-context recall from 76.5%
       # to 79.6% at about 1% prefill (FlashInfer PR 15).
       VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE: prefill
+      # The checkpoint stores its trained LM head in MXFP8, so the MTP drafter
+      # shares that head instead of building a private NVFP4 copy from BF16.
+      VLLM_GLM53_MTP_DRAFT_HEAD: bf16
     modes:
       mtp:
         config: {moe_backend: b12x}
@@ -68,9 +71,10 @@ presets:
       cache-object-tokens: max-num-batched-tokens
     # An image whose vLLM predates VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE (vLLM
     # PR 1027) cannot load the mixed-format KDA projections of the current
-    # revision and keeps serving the earlier QAD revision.
+    # revision and keeps serving the earlier QAD revision; the fallback also
+    # drops the shared draft head, so that revision keeps its NVFP4 drafter.
     vllm_fallback:
-      requires_environment: [VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE]
+      requires_environment: [VLLM_GLM53_KDA_MXFP8_ACTIVATION_MODE, VLLM_GLM53_MTP_DRAFT_HEAD]
       options:
         revision: dec48abd33efa73c3bb7c95b74eee10cad34f9be
     # Working memory per request slot above eight, carried over from the
