@@ -1,0 +1,18 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-158",
+  "category": "feature",
+  "summary": "--print-command prints the preset's vllm serve process as a docker run script",
+  "models": [
+    "all"
+  ],
+  "compatibility": "No user action required; nothing changes for a normal start.",
+  "details": [
+    "docker run --rm -e PRESET=<preset> <image> --print-command prints the vllm serve process behind the preset as a shell script: a docker run command with every environment variable the launcher sets and the vLLM options as the container command, which keeps the image's CUDA/NCCL bootstrap and skips the profile launcher. IMAGE=<image> GPUS=0,1 PORT=8000 bash <script> starts it.",
+    "FP4-CSF checkpoints in the Hugging Face layout are named by repository and --revision with the execution-time options (--quantization modelopt_mixed --load-format instanttensor), so vLLM downloads the pinned revision itself. Presets with the external LMCache tier print their CACHE_MODE=vram form."
+  ],
+  "pull_requests": [
+    158
+  ],
+  "requires": []
+}
