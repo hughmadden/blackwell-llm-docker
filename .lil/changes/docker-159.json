@@ -1,0 +1,17 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-159",
+  "category": "fix",
+  "summary": "--print-command also works for deployments with an explicit external cache",
+  "models": [
+    "all"
+  ],
+  "compatibility": "No user action required.",
+  "details": [
+    "--print-command refused CACHE_MODE=lmcache / --cache-mode lmcache given explicitly, which the configurator's generated commands always carry. It now prints such a deployment in its CACHE_MODE=vram form (GPU prefix cache only, same KV size), as it already did for the presets' default external cache, and says so in the script header."
+  ],
+  "pull_requests": [
+    159
+  ],
+  "requires": []
+}
