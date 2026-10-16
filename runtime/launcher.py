@@ -2664,23 +2664,34 @@ def plain_command(plan: LaunchPlan, values: dict, notes: list[str], name: str) -
             option_lines.append("    " + " ".join(shlex.quote(item) for item in group))
     header = [
         "#!/usr/bin/env bash",
-        f"# The vllm serve process behind {name}: profile {plan.profile}, hardware "
-        f"{plan.hardware}. Printed by the image's launcher (--print-command).",
+        (
+            f"# The vllm serve process behind {name}: profile {plan.profile}, "
+            f"hardware {plan.hardware}. Printed by the image's launcher "
+            "(--print-command)."
+        ),
         "# Run it with the image it was printed from:",
         "#   IMAGE=ghcr.io/local-inference-lab/vllm:<tag> GPUS=0,1 PORT=8000 bash <this file>",
         *(f"# {note}" for note in notes),
-        '# "vllm serve ..." as the container command keeps the image\'s CUDA/NCCL '
-        "bootstrap and skips the model-profile launcher.",
+        (
+            '# "vllm serve ..." as the container command keeps the image\'s '
+            "CUDA/NCCL bootstrap and skips the model-profile launcher."
+        ),
         "set -euo pipefail",
         "IMAGE=${IMAGE:?set IMAGE to the image tag this command was printed from}",
         f"NAME=${{NAME:-{shlex.quote(name)}}}",
-        f"GPUS=${{GPUS:-{','.join(str(index) for index in range(gpus))}}}"
-        f"   # {gpus} GPU{'s' if gpus != 1 else ''}",
+        (
+            f"GPUS=${{GPUS:-{','.join(str(index) for index in range(gpus))}}}"
+            f"   # {gpus} GPU{'s' if gpus != 1 else ''}"
+        ),
         f"PORT=${{PORT:-{port}}}",
-        "HF_CACHE=${HF_CACHE:-model-cache}   # volume or host directory for the "
-        "Hugging Face cache (/root/.cache/huggingface)",
-        "RUNTIME_CACHE=${RUNTIME_CACHE:-${NAME}-runtime}   # volume or host "
-        "directory for JIT caches (/cache)",
+        (
+            "HF_CACHE=${HF_CACHE:-model-cache}   # volume or host directory for "
+            "the Hugging Face cache (/root/.cache/huggingface)"
+        ),
+        (
+            "RUNTIME_CACHE=${RUNTIME_CACHE:-${NAME}-runtime}   # volume or host "
+            "directory for JIT caches (/cache)"
+        ),
         "",
         'docker run -d --name "$NAME" --init --gpus "\\"device=$GPUS\\"" \\',
         "  --network host --ipc host --shm-size 32g --stop-timeout 30 \\",

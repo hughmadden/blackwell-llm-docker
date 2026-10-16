@@ -8,8 +8,8 @@ import pytest
 
 from runtime import launcher
 from runtime.launcher import (
-    ConfigError,
     ROOT,
+    ConfigError,
     make_argv,
     plain_command,
     plain_values,
@@ -135,6 +135,7 @@ def test_container_layout_and_replicas_have_no_plain_command(monkeypatch):
 def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
     """Outside an image the CLI resolves the preset as written and prints a script."""
     result = subprocess.run(
+        check=False,
         [
             sys.executable,
             "-m",
@@ -159,6 +160,7 @@ def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
     assert "--revision " + QAD_REVISION in script
     assert "kv-transfer-config" not in script
     explicit = subprocess.run(
+        check=False,
         [
             sys.executable,
             "-m",
