@@ -515,11 +515,12 @@ The printed command is the one the launcher executes, with two differences:
   these two options, which vLLM does not accept directly. Checkpoints the
   launcher serves through files it generates at start (FP4-CSF container
   layout) have no plain command; `--print-command` says so.
-- A preset whose default adds the external LMCache tier is printed in its
-  `CACHE_MODE=vram` form (GPU prefix cache only, same KV size), because the
-  external cache is a second process. An explicit `CACHE_MODE=lmcache` is
-  refused. `REPLICAS` above one and drafters resolved from a subfolder of the
-  target checkpoint are refused for the same reason.
+- A deployment with the external LMCache tier (the GLM presets' default, or
+  an explicit `CACHE_MODE=lmcache`) is printed in its `CACHE_MODE=vram` form
+  (GPU prefix cache only, same KV size), because the external cache is a
+  second process; the script says so in its header. `REPLICAS` above one and
+  drafters resolved from a subfolder of the target checkpoint are refused for
+  the same reason.
 
 Verified for `glm53-tp2` on `release-10152026`: the printed command and the
 preset start servers whose API-server argv, environment, cache configuration

@@ -2573,6 +2573,23 @@ def csf_hub_layout_files(repository: str, revision: str | None) -> Path:
     return path.parent
 
 
+def cache_mode_removed(native: list[str]) -> list[str]:
+    """Native arguments without any --cache-mode option."""
+    result: list[str] = []
+    skip = False
+    for argument in native:
+        if skip:
+            skip = False
+            continue
+        if argument == "--cache-mode":
+            skip = True
+            continue
+        if argument.startswith("--cache-mode="):
+            continue
+        result.append(argument)
+    return result
+
+
 def plain_values(plan: LaunchPlan) -> dict:
     """Option values of the one vllm serve process the plan runs, for a command
     without the launcher.
@@ -2778,17 +2795,12 @@ def main() -> int:
         if args.print_command:
             notes = []
             if plan.cache_service:
-                if plan.origins.get("cache-mode", "").startswith(
-                    ("cli", "settings:", "environment")
-                ):
-                    raise ConfigError(
-                        "--print-command prints one vllm serve process; the "
-                        "external cache (CACHE_MODE=lmcache) adds an LMCache "
-                        "service. Print the CACHE_MODE=vram form instead"
-                    )
+                # The external cache is a second process; print the one
+                # vllm serve process of the same deployment with the GPU cache.
+                native = [*cache_mode_removed(native), "--cache-mode", "vram"]
                 plan = plan_for({**explicit_env, "CACHE_MODE": "vram"})
                 notes.append(
-                    "The preset's default also runs an LMCache RAM tier "
+                    "This deployment also runs an LMCache RAM tier "
                     "(CACHE_MODE=lmcache, a second process that restores "
                     "conversations evicted from the GPU cache). This is its "
                     "CACHE_MODE=vram form: GPU prefix cache only, same KV size."

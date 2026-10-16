@@ -167,8 +167,12 @@ def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
             "--preset",
             "glm53-tp2",
             "--print-command",
-            "--env",
-            "CACHE_MODE=lmcache",
+            "--",
+            "--cache-mode",
+            "lmcache",
+            "--no-cache-l2-enabled",
+            "--cache-object-tokens",
+            "4096",
         ],
         cwd=ROOT.parent,
         capture_output=True,
@@ -180,5 +184,21 @@ def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
         },
         check=False,
     )
-    assert explicit.returncode == 2
-    assert "CACHE_MODE=vram" in explicit.stderr
+    assert explicit.returncode == 0, explicit.stderr
+    assert "CACHE_MODE=vram form" in explicit.stdout
+    assert "kv-transfer-config" not in explicit.stdout
+    assert (
+        explicit.stdout.split("\ndocker run", 1)[1]
+        == script.split("\ndocker run", 1)[1]
+    )
+
+
+def test_cache_mode_removed_drops_both_spellings():
+    from runtime.launcher import cache_mode_removed
+
+    assert cache_mode_removed(["--port", "1", "--cache-mode", "lmcache", "--x"]) == [
+        "--port",
+        "1",
+        "--x",
+    ]
+    assert cache_mode_removed(["--cache-mode=lmcache", "--y", "2"]) == ["--y", "2"]
