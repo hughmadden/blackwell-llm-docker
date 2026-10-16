@@ -10,6 +10,7 @@ import math
 import os
 import platform as host_platform
 import re
+import shlex
 import shutil
 import sys
 from dataclasses import asdict, dataclass
@@ -2547,6 +2548,156 @@ def execute(plan: LaunchPlan, contract_path: Path) -> None:
     os.execvpe(command[0], command, environment)
 
 
+def csf_hub_layout_files(repository: str, revision: str | None) -> Path:
+    """The snapshot directory holding a Hub checkpoint's config.json and
+    safetensors index (two small files; a cached copy is used as is)."""
+    from huggingface_hub import hf_hub_download
+
+    path = None
+    for name in ("config.json", "model.safetensors.index.json"):
+        for offline in (True, False):
+            try:
+                path = Path(
+                    hf_hub_download(
+                        repository, name, revision=revision, local_files_only=offline
+                    )
+                )
+                break
+            except OSError:
+                continue
+        if path is None or path.name != name:
+            raise ConfigError(
+                f"{repository} ({revision or 'main'}) has no readable {name}; "
+                "the layout of its FP4-CSF checkpoint cannot be determined"
+            )
+    return path.parent
+
+
+def plain_values(plan: LaunchPlan) -> dict:
+    """Option values of the one vllm serve process the plan runs, for a command
+    without the launcher.
+
+    An FP4-CSF checkpoint in the Hugging Face layout gets the two options the
+    launcher sets at execution (prepare_hf_layout_csf): quantization
+    modelopt_mixed and load-format instanttensor. The repository id and
+    --revision stay; vLLM downloads the pinned revision itself. A pinned
+    revision's layout is known from checkpoints.yaml, a directory's from its
+    files, any other Hub revision's from its config.json and index.
+    """
+    if plan.values["replicas"] > 1:
+        raise ConfigError(
+            "--print-command prints one vllm serve process; REPLICAS runs several "
+            "behind the launcher's proxy"
+        )
+    if plan.draft_subfolder:
+        raise ConfigError(
+            "--print-command: the drafter inside the target checkpoint is resolved "
+            "to a local path when the launcher starts; this speculation mode has "
+            "no plain vllm command"
+        )
+    values = copy.deepcopy(plan.values)
+    method = values.get("load-format")
+    if method not in CSF_FORMATS:
+        return values
+    source = str(values["model"])
+    revision = values.get("revision")
+    if Path(source).is_dir():
+        hf_layout = csf_hf_layout(Path(source))
+    elif revision in pinned_csf_contents().get(source, {}):
+        hf_layout = True
+    elif revision in pinned_csf_manifests().get(source, {}):
+        hf_layout = False
+    else:
+        hf_layout = csf_hf_layout(csf_hub_layout_files(source, revision))
+    if not hf_layout or method != "nvfp4_csf":
+        raise ConfigError(
+            f"{source} is served through files the launcher generates at start "
+            "(FP4-CSF container layout); it has no plain vllm command. Start the "
+            "preset itself"
+        )
+    if installed_nvfp4_csf_recipes():
+        values["quantization"] = "modelopt_mixed"
+        values["load-format"] = "instanttensor"
+    return values
+
+
+def plain_command(plan: LaunchPlan, values: dict, notes: list[str], name: str) -> str:
+    """A docker run command for the vllm serve process behind a plan.
+
+    The script passes every environment variable the launcher would pass
+    (secrets by name only, taken from the caller's environment) and the vLLM
+    options as the container command, which keeps the image's CUDA/NCCL
+    bootstrap and skips the model-profile launcher. GPU selection, port, name
+    and the two cache mounts are variables with defaults from the plan.
+    """
+    argv = make_argv(values, plan.passthrough)
+    if argv[3] != "serve":
+        raise ConfigError("--print-command expects a vllm serve command")
+    model, options = argv[4], argv[5:]
+    gpus = 1
+    for key in ("tensor-parallel-size", "pipeline-parallel-size", "data-parallel-size"):
+        amount = values.get(key)
+        if isinstance(amount, int) and amount > 0:
+            gpus *= amount
+    port = values.get("port", 8000)
+    launcher_env = []
+    inherited = []
+    for key, value in sorted(plan.environment.items()):
+        line = (
+            f"  -e {key}" if SECRET.search(key) else f"  -e {key}={shlex.quote(value)}"
+        )
+        if plan.environment_origins.get(key) == "environment":
+            inherited.append(line)
+        else:
+            launcher_env.append(line)
+    grouped: list[list[str]] = []
+    for argument in options:
+        if argument.startswith("--") or not grouped:
+            grouped.append([argument])
+        else:
+            grouped[-1].append(argument)
+    option_lines = []
+    for group in grouped:
+        if group == ["--port", str(port)]:
+            option_lines.append('    --port "$PORT"')
+        else:
+            option_lines.append("    " + " ".join(shlex.quote(item) for item in group))
+    header = [
+        "#!/usr/bin/env bash",
+        f"# The vllm serve process behind {name}: profile {plan.profile}, hardware "
+        f"{plan.hardware}. Printed by the image's launcher (--print-command).",
+        "# Run it with the image it was printed from:",
+        "#   IMAGE=ghcr.io/local-inference-lab/vllm:<tag> GPUS=0,1 PORT=8000 bash <this file>",
+        *(f"# {note}" for note in notes),
+        '# "vllm serve ..." as the container command keeps the image\'s CUDA/NCCL '
+        "bootstrap and skips the model-profile launcher.",
+        "set -euo pipefail",
+        "IMAGE=${IMAGE:?set IMAGE to the image tag this command was printed from}",
+        f"NAME=${{NAME:-{shlex.quote(name)}}}",
+        f"GPUS=${{GPUS:-{','.join(str(index) for index in range(gpus))}}}"
+        f"   # {gpus} GPU{'s' if gpus != 1 else ''}",
+        f"PORT=${{PORT:-{port}}}",
+        "HF_CACHE=${HF_CACHE:-model-cache}   # volume or host directory for the "
+        "Hugging Face cache (/root/.cache/huggingface)",
+        "RUNTIME_CACHE=${RUNTIME_CACHE:-${NAME}-runtime}   # volume or host "
+        "directory for JIT caches (/cache)",
+        "",
+        'docker run -d --name "$NAME" --init --gpus "\\"device=$GPUS\\"" \\',
+        "  --network host --ipc host --shm-size 32g --stop-timeout 30 \\",
+        "  --ulimit memlock=-1 --ulimit stack=67108864:67108864 \\",
+        '  -v "$HF_CACHE":/root/.cache/huggingface -v "$RUNTIME_CACHE":/cache \\',
+    ]
+    body = [line + " \\" for line in launcher_env]
+    if inherited:
+        body.append("  `# inherited from the image or the printing environment` \\")
+        body.extend(line + " \\" for line in inherited)
+    body.append('  "$IMAGE" \\')
+    body.append(f"  vllm serve {shlex.quote(model)} \\")
+    body.extend(line + " \\" for line in option_lines[:-1])
+    body.append(option_lines[-1])
+    return "\n".join(header + body) + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument(
@@ -2563,6 +2714,11 @@ def main() -> int:
     parser.add_argument("--settings", type=Path)
     parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE")
     parser.add_argument("--print-config", action="store_true")
+    parser.add_argument(
+        "--print-command",
+        action="store_true",
+        help="Print the resolved vllm serve process as a docker run command instead of starting it",
+    )
     parser.add_argument(
         "--image-contract", type=Path, default=ROOT / "image-contract.json"
     )
@@ -2583,27 +2739,57 @@ def main() -> int:
             explicit_env[name] = value
         runtime_identity = None
         contract = {}
-        if not args.print_config or args.image_contract.exists():
+        printing = args.print_config or args.print_command
+        if not printing or args.image_contract.exists():
             from runtime.packaging import verify_contract
 
             contract = verify_contract(args.image_contract)
             runtime_identity = contract["runtime_lock_sha256"]
-        plan = resolve(
-            identifier,
-            hardware,
-            config=read_yaml(args.settings) if args.settings else None,
-            argv=native,
-            cli_env=explicit_env,
-            runtime_identity=runtime_identity,
-            preset=args.preset,
-            # Inside an image, check the installed vLLM; a CPU-only
-            # --print-config outside one resolves the preset as written.
-            vllm_environment=installed_vllm_environment() if contract else None,
-            csf_formats=installed_csf_formats() if contract else None,
-            csf_families=installed_csf_families() if contract else None,
-            csf_encodings=installed_csf_encodings() if contract else None,
-        )
-        if args.print_config:
+
+        def plan_for(cli_env: dict[str, str]) -> LaunchPlan:
+            return resolve(
+                identifier,
+                hardware,
+                config=read_yaml(args.settings) if args.settings else None,
+                argv=native,
+                cli_env=cli_env,
+                runtime_identity=runtime_identity,
+                preset=args.preset,
+                # Inside an image, check the installed vLLM; a CPU-only
+                # --print-config outside one resolves the preset as written.
+                vllm_environment=installed_vllm_environment() if contract else None,
+                csf_formats=installed_csf_formats() if contract else None,
+                csf_families=installed_csf_families() if contract else None,
+                csf_encodings=installed_csf_encodings() if contract else None,
+            )
+
+        plan = plan_for(explicit_env)
+        if args.print_command:
+            notes = []
+            if plan.cache_service:
+                if plan.origins.get("cache-mode", "").startswith(
+                    ("cli", "settings:", "environment")
+                ):
+                    raise ConfigError(
+                        "--print-command prints one vllm serve process; the "
+                        "external cache (CACHE_MODE=lmcache) adds an LMCache "
+                        "service. Print the CACHE_MODE=vram form instead"
+                    )
+                plan = plan_for({**explicit_env, "CACHE_MODE": "vram"})
+                notes.append(
+                    "The preset's default also runs an LMCache RAM tier "
+                    "(CACHE_MODE=lmcache, a second process that restores "
+                    "conversations evicted from the GPU cache). This is its "
+                    "CACHE_MODE=vram form: GPU prefix cache only, same KV size."
+                )
+            name = f"PRESET={args.preset}" if args.preset else f"PROFILE={identifier}"
+            print(
+                plain_command(
+                    plan, plain_values(plan), notes, args.preset or identifier
+                ),
+                end="",
+            )
+        elif args.print_config:
             public = plan.public()
             public["bootstrap"] = contract.get("bootstrap", [])
             public["runtime_lock_sha256"] = runtime_identity

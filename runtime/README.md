@@ -21,6 +21,8 @@ and `ds41-flash`. Select GPUs to match TP. DS4.1's Engram access also needs
 the generated Compose's memory-lock and io_uring permissions. `MODEL` is an
 optional checkpoint override; it does not select another model architecture.
 `--print-config` displays the resolved command without starting services.
+`--print-command` prints the resolved `vllm serve` process as a runnable
+`docker run` script, see [The vLLM command behind a preset](#the-vllm-command-behind-a-preset).
 With no profile or command the container prints help, not an implicit model.
 Explicit commands such as `python`, `bash` or `vllm serve` retain the ABI
 bootstrap and bypass profile defaults.
@@ -118,6 +120,9 @@ prompt tokens from cache (90% of turns under 18 s), against 155 turns, 65% and
   GLM cache object size follows a changed prefill budget unless explicitly set.
   Automatic capture capacity follows request slots and effective proposal width.
 - Native form: `lil-serve --preset glm53-tp2 -- --port 8000`.
+- Plain form: `docker run --rm -e PRESET=glm53-tp2 "$LIL_IMAGE" --print-command`
+  prints the `vllm serve` process this preset runs, see
+  [The vLLM command behind a preset](#the-vllm-command-behind-a-preset).
 - Qwen TP2: `PRESET=qwen38-tp2`; CPU PLE placement and MTP defaults still come
   from the Qwen model profile. `PROFILE=qwen38-flash-next TP=2` is equivalent.
 - Qwen as two TP1 replicas: `PRESET=qwen38-tp1x2` runs one complete server per
@@ -478,6 +483,47 @@ python -m runtime.launcher --profile glm53-flash --print-config -- \
 Request boundaries remain the GLM default. No image-limit-one override is
 introduced for Vision; its native multimodal count and encoder-budget rules
 remain separate from the text scheduler budget.
+
+## The vLLM command behind a preset
+
+A preset is one `vllm serve` process plus the environment the launcher sets.
+`--print-command` prints that process as a shell script with a `docker run`
+command, for running or reading it without the preset launcher:
+
+```bash
+docker run --rm -e PRESET=glm53-tp2 "$LIL_IMAGE" --print-command > glm53-tp2.sh
+IMAGE="$LIL_IMAGE" GPUS=0,1 PORT=8000 bash glm53-tp2.sh
+```
+
+The script passes every environment variable the launcher would pass (the
+ones it sets itself first, then the ones inherited from the image) and the
+vLLM options as the container command. `vllm serve …` as the container command
+keeps the image's CUDA/NCCL bootstrap and skips the model-profile launcher.
+`IMAGE` is required and must be the image the script was printed from; `GPUS`,
+`PORT`, `NAME`, `HF_CACHE` and `RUNTIME_CACHE` have defaults from the preset.
+Settings, `--env` aliases and native arguments apply as for a start:
+`-e MAX_NUM_SEQS=16 … --print-command -- --port 8001` prints that variant.
+
+The printed command is the one the launcher executes, with two differences:
+
+- An FP4-CSF checkpoint in the Hugging Face layout (the GLM and Qwen QAD
+  revisions) is named by repository and `--revision`, so vLLM downloads the
+  pinned revision itself; the launcher passes the downloaded snapshot
+  directory instead. Both get `--quantization modelopt_mixed --load-format
+  instanttensor`, the options the launcher sets at execution. The
+  `--print-config` JSON still shows the launcher's own names `nvfp4_csf` for
+  these two options, which vLLM does not accept directly. Checkpoints the
+  launcher serves through files it generates at start (FP4-CSF container
+  layout) have no plain command; `--print-command` says so.
+- A preset whose default adds the external LMCache tier is printed in its
+  `CACHE_MODE=vram` form (GPU prefix cache only, same KV size), because the
+  external cache is a second process. An explicit `CACHE_MODE=lmcache` is
+  refused. `REPLICAS` above one and drafters resolved from a subfolder of the
+  target checkpoint are refused for the same reason.
+
+Verified for `glm53-tp2` on `release-10152026`: the printed command and the
+preset start servers whose API-server argv, environment, cache configuration
+(1,844,162 KV tokens) and greedy output are identical.
 
 ## Tokenizer backend
 
