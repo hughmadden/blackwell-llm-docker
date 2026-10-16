@@ -135,7 +135,6 @@ def test_container_layout_and_replicas_have_no_plain_command(monkeypatch):
 def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
     """Outside an image the CLI resolves the preset as written and prints a script."""
     result = subprocess.run(
-        check=False,
         [
             sys.executable,
             "-m",
@@ -152,6 +151,7 @@ def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
             "PYTHONPATH": str(ROOT.parent),
             "HOME": str(tmp_path),
         },
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     script = result.stdout
@@ -160,7 +160,6 @@ def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
     assert "--revision " + QAD_REVISION in script
     assert "kv-transfer-config" not in script
     explicit = subprocess.run(
-        check=False,
         [
             sys.executable,
             "-m",
@@ -179,6 +178,7 @@ def test_cli_prints_the_vram_form_of_the_default_preset(tmp_path):
             "PYTHONPATH": str(ROOT.parent),
             "HOME": str(tmp_path),
         },
+        check=False,
     )
     assert explicit.returncode == 2
     assert "CACHE_MODE=vram" in explicit.stderr
