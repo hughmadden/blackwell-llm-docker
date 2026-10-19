@@ -2,13 +2,21 @@
   "schema": "local-inference-release-change/v1",
   "id": "docker-160-mxfp4-csf-contract",
   "category": "fix",
-  "summary": "DeepSeek FP4-CSF checkpoints start again on images with the FlashInfer B12X CSF loader",
-  "models": ["DeepSeek-V4.1-Flash", "DeepSeek-V4-Flash"],
+  "summary": "The launcher presents DeepSeek FP4-CSF containers to the FlashInfer B12X CSF loader in the layout it reads",
+  "models": [
+    "DeepSeek-V4.1-Flash",
+    "DeepSeek-V4-Flash"
+  ],
   "compatibility": "No user action required.",
   "details": [
     "Since the images of 2026-10-15 the MXFP4-CSF loader reads a checkpoint through its config.json (scale encoding) and a safetensors index of the stored tensors at the checkpoint root. The launcher kept generating the previous serving files for the DeepSeek FP4-CSF containers, and the server stopped at startup with \"CSF requires weight_scale_encoding='csf' or 'csf_32x2_v1'\". The default DeepSeek-V4.1-Flash and DeepSeek-V4-Flash checkpoints (CHECKPOINT=csf) were affected on those images; the beta channel's loader was not.",
-    "On such an image the launcher now serves the container through a generated config.json naming the slab encoding and an index of the stored tensors (read from the shard headers), with the shards linked in place. Images with the previous loader keep the previous serving files."
+    "On such an image the launcher now serves the container through a generated config.json naming the slab encoding and an index of the stored tensors (read from the shard headers), with the shards linked in place. Images with the previous loader keep the previous serving files.",
+    "The loader itself needs the vLLM change vllm-csf-contract-family to read these containers (model family from the top-level model_type, slab scales in their segment shape); until an image carries it, DeepSeek FP4-CSF checkpoints still do not start on that channel and CHECKPOINT=original or the beta channel are the alternatives."
   ],
-  "pull_requests": [160],
-  "requires": []
+  "pull_requests": [
+    160
+  ],
+  "requires": [
+    "vllm-csf-contract-family"
+  ]
 }
