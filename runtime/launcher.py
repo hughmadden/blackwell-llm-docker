@@ -332,6 +332,15 @@ def installed_nvfp4_csf_recipes() -> bool:
     )
 
 
+def installed_mxfp4_csf_contract() -> bool:
+    """Whether the installed vLLM reads an MXFP4-CSF checkpoint through the
+    Hugging Face-layout contract: a config.json whose quantization_config names
+    the scale encoding and a safetensors index of the stored tensors at the
+    checkpoint root, instead of the container's manifest and metadata/."""
+    source = installed_source("vllm", "model_executor/model_loader/csf_utils.py")
+    return source is not None and "CSF requires weight_scale_encoding" in source
+
+
 def installed_csf_families() -> frozenset[str] | None:
     """Checkpoint families the installed vLLM's FP4-CSF loaders accept.
 
@@ -1894,6 +1903,9 @@ def prepare_csf_checkpoint(plan: LaunchPlan) -> None:
     if method == "nvfp4_csf" and installed_nvfp4_csf_recipes():
         prepare_recipe_csf_container(plan, source, root)
         return
+    if method == "mxfp4_csf" and installed_mxfp4_csf_contract():
+        prepare_contract_csf_container(plan, source, root)
+        return
     missing = csf_missing_files(root)
     if missing:
         raise ConfigError(
@@ -1948,13 +1960,12 @@ def safetensors_header(path: Path) -> dict:
 CSF_SCALE_SUFFIX = ".weight_scale.nvfp4_csf_fixed"
 
 
-def csf_recipe_serving_files(config: dict, root: Path) -> tuple[dict, dict]:
-    """config.json and safetensors index that open an NVFP4-CSF container
-    through ModelOpt recipes.
+def csf_stored_index(root: Path) -> tuple[dict[str, str], int]:
+    """The tensors an FP4-CSF container stores, by shard, and their total bytes.
 
-    The container's shards already store each compressed expert scale as
-    weight_scale.nvfp4_csf_fixed and _exceptions tensors; only the recipes that
-    declare them and an index of the stored tensor names are missing.
+    The container's metadata index names the source tensors; the shards store
+    compressed scale tensors under other names, so a loader that indexes the
+    stored tensors needs this map.
     """
     weight_map: dict[str, str] = {}
     total = 0
@@ -1964,6 +1975,18 @@ def csf_recipe_serving_files(config: dict, root: Path) -> tuple[dict, dict]:
                 continue
             weight_map[name] = f"tensors/{shard.name}"
             total += int(info["data_offsets"][1]) - int(info["data_offsets"][0])
+    return weight_map, total
+
+
+def csf_recipe_serving_files(config: dict, root: Path) -> tuple[dict, dict]:
+    """config.json and safetensors index that open an NVFP4-CSF container
+    through ModelOpt recipes.
+
+    The container's shards already store each compressed expert scale as
+    weight_scale.nvfp4_csf_fixed and _exceptions tensors; only the recipes that
+    declare them and an index of the stored tensor names are missing.
+    """
+    weight_map, total = csf_stored_index(root)
     modules = sorted(
         {
             name[: -len(CSF_SCALE_SUFFIX)].split(".experts.")[0] + ".experts"
@@ -2072,6 +2095,73 @@ def prepare_recipe_csf_container(plan: LaunchPlan, source: str, root: Path) -> N
             spec["model"] = str(serving)
     plan.argv = make_argv(plan.values, plan.passthrough)
     print(f"Serving NVFP4-CSF checkpoint {root} through {serving}", file=sys.stderr)
+
+
+def prepare_contract_csf_container(plan: LaunchPlan, source: str, root: Path) -> None:
+    """Serve an MXFP4-CSF container to a vLLM whose loader reads the
+    Hugging Face-layout contract.
+
+    That loader takes the checkpoint root from quantization_config and expects
+    config.json there to name the scale encoding and model.safetensors.index.json
+    to list the stored tensors, shards included as checkpoint-local paths. The
+    container keeps those files under metadata/ with the source tensor names, so
+    the serving directory gets a generated config.json and index, the other
+    metadata files and a link to the shards.
+    """
+    missing = csf_missing_files(root)
+    if missing:
+        raise ConfigError(
+            f"{source} is incomplete; missing or partial: {', '.join(missing[:5])}"
+            + (f" and {len(missing) - 5} more" if len(missing) > 5 else "")
+        )
+    try:
+        config = json.loads((root / "metadata" / "config.json").read_text())
+    except (OSError, ValueError) as error:
+        raise ConfigError(f"{source} has no readable metadata/config.json") from error
+    holder = config if "quantization_config" in config else config.get("text_config")
+    if not isinstance(holder, dict) or not isinstance(
+        holder.get("quantization_config"), dict
+    ):
+        raise ConfigError("FP4-CSF metadata/config.json has no quantization_config")
+    weight_map, total = csf_stored_index(root)
+    if not any(name.endswith(".mxfp4_csf_fixed") for name in weight_map):
+        raise ConfigError(f"{root} stores no MXFP4-CSF expert scales")
+    name = re.sub(r"[^A-Za-z0-9._-]", "-", Path(source).name) or "checkpoint"
+    digest = hashlib.sha256(str(root).encode()).hexdigest()[:12]
+    serving = CSF_SERVING_ROOT / f"{name}-{digest}-contract"
+    if serving.exists():
+        shutil.rmtree(serving)
+    serving.mkdir(parents=True)
+    generated = {"config.json", "model.safetensors.index.json"}
+    for item in sorted((root / "metadata").iterdir()):
+        if item.is_file() and item.name not in generated:
+            shutil.copyfile(item, serving / item.name)
+    holder["quantization_config"] = {
+        **holder["quantization_config"],
+        "quant_method": "mxfp4_csf",
+        "format_version": 1,
+        "checkpoint_root": str(serving),
+        "weight_scale_encoding": "csf",
+    }
+    (serving / "config.json").write_text(json.dumps(config, indent=2) + "\n")
+    (serving / "model.safetensors.index.json").write_text(
+        json.dumps({"metadata": {"total_size": total}, "weight_map": weight_map}) + "\n"
+    )
+    (serving / "tensors").symlink_to(root / "tensors", target_is_directory=True)
+    plan.values["model"] = str(serving)
+    plan.origins["model"] = f"resolved:MXFP4-CSF contract serving files for {source}"
+    manifest_digest = hashlib.sha256(
+        b"lil-fp4-csf-v1\0" + (root / "manifest.json").read_bytes()
+    ).hexdigest()
+    plan.target_identity = {"identity": manifest_digest, "revision": ""}
+    plan.values.pop("revision", None)
+    spec = plan.values.get("speculative-config")
+    if spec and spec.get("model", source) == source:
+        spec.pop("revision", None)
+        if "model" in spec:
+            spec["model"] = str(serving)
+    plan.argv = make_argv(plan.values, plan.passthrough)
+    print(f"Serving MXFP4-CSF checkpoint {root} through {serving}", file=sys.stderr)
 
 
 def prepare_hf_layout_csf(plan: LaunchPlan, source: str, root: Path) -> None:
