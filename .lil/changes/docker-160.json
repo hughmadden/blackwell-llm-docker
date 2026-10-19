@@ -1,0 +1,18 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-160",
+  "category": "feature",
+  "summary": "DeepSeek-V4.1-Flash serves DeepSeek's 2026-10-17 release (DeepSeek-V4.1-Flash-1017)",
+  "models": [
+    "DeepSeek-V4.1-Flash"
+  ],
+  "compatibility": "The first start downloads the new checkpoint (about 495 GB for the FP4-CSF default); LMCache disk tiers written with the previous checkpoint are not reused.",
+  "details": [
+    "PROFILE=ds41-flash serves local-inference-lab/DeepSeek-V4.1-Flash-1017-lossless-CSF (revision 90d665c1), the lossless FP4-CSF container of deepseek-ai/DeepSeek-V4.1-Flash-1017. CHECKPOINT=original serves deepseek-ai/DeepSeek-V4.1-Flash-1017 (revision 1bae0e10).",
+    "Loader, quantization, sampling defaults and all other profile values are unchanged."
+  ],
+  "pull_requests": [
+    160
+  ],
+  "requires": []
+}
