@@ -41,10 +41,10 @@ CSF = {
         "1f3bb90cbff7f63cfb5c04c0ab723e6f75b633a8",
     ),
     "ds41-flash": Variants(
-        "local-inference-lab/DeepSeek-V4.1-Flash-lossless-CSF",
+        "local-inference-lab/DeepSeek-V4.1-Flash-1017-lossless-CSF",
         "mxfp4_csf",
-        "deepseek-ai/DeepSeek-V4.1-Flash",
-        None,
+        "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        "1bae0e1088993b9b82de08f59de5be5a34e42170",
     ),
     "ds4-flash": Variants(
         "local-inference-lab/DeepSeek-V4-Flash-0731-lossless-CSF",
@@ -289,7 +289,7 @@ def test_mxfp4_csf_serving_files_keep_the_source_fields(tmp_path, monkeypatch):
     }
     assert plan.origins["model"].startswith("resolved:FP4-CSF")
     assert launcher.Path(plan.values["model"]).name.startswith(
-        "DeepSeek-V4.1-Flash-lossless-CSF-"
+        "DeepSeek-V4.1-Flash-1017-lossless-CSF-"
     )
 
 
