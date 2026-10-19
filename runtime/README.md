@@ -375,7 +375,7 @@ memory, which leaves more room for the KV cache. The downloads are smaller too.
 | Qwen3.8-Flash-Next | `local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD` | `local-inference-lab/Qwen3.8-Flash-Next-NVFP4` (QAD) |
 | GLM-5.3-Flash | `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` (MXFP8 attention and shared experts) | `local-inference-lab/GLM-5.3-Flash-NVFP4` (QAD) |
 | GLM-5.3 (744B) | `local-inference-lab/GLM-5.3-NVFP4-CSF` | `local-inference-lab/GLM-5.3-NVFP4` at `1f3bb90c` (keeps the BF16 MTP layer unquantized) |
-| DeepSeek-V4.1-Flash | `local-inference-lab/DeepSeek-V4.1-Flash-lossless-CSF` | `deepseek-ai/DeepSeek-V4.1-Flash` |
+| DeepSeek-V4.1-Flash | `local-inference-lab/DeepSeek-V4.1-Flash-1017-lossless-CSF` | `deepseek-ai/DeepSeek-V4.1-Flash-1017` |
 | DeepSeek-V4-Flash | `local-inference-lab/DeepSeek-V4-Flash-0731-lossless-CSF` | `deepseek-ai/DeepSeek-V4-Flash-0731` at `9e165c30` |
 | DeepSeek-V4-Flash Vision | `local-inference-lab/DeepSeek-V4-Flash-Vision-Exp-lossless-CSF` | `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` at `6821d6ad` |
 

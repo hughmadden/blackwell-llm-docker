@@ -41,10 +41,10 @@ CSF = {
         "1f3bb90cbff7f63cfb5c04c0ab723e6f75b633a8",
     ),
     "ds41-flash": Variants(
-        "local-inference-lab/DeepSeek-V4.1-Flash-lossless-CSF",
+        "local-inference-lab/DeepSeek-V4.1-Flash-1017-lossless-CSF",
         "mxfp4_csf",
-        "deepseek-ai/DeepSeek-V4.1-Flash",
-        None,
+        "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        "1bae0e1088993b9b82de08f59de5be5a34e42170",
     ),
     "ds4-flash": Variants(
         "local-inference-lab/DeepSeek-V4-Flash-0731-lossless-CSF",
@@ -289,7 +289,7 @@ def test_mxfp4_csf_serving_files_keep_the_source_fields(tmp_path, monkeypatch):
     }
     assert plan.origins["model"].startswith("resolved:FP4-CSF")
     assert launcher.Path(plan.values["model"]).name.startswith(
-        "DeepSeek-V4.1-Flash-lossless-CSF-"
+        "DeepSeek-V4.1-Flash-1017-lossless-CSF-"
     )
 
 
@@ -545,6 +545,120 @@ def test_recipe_csf_reader_serves_a_container_through_recipes(tmp_path, monkeypa
     assert (serving / shard).is_file()
     assert (serving / "tokenizer.json").is_file()
     assert not (serving / "hf_quant_config.json").exists()
+
+
+def _mxfp4_csf_container(root):
+    """A DeepSeek MXFP4-CSF container: DeepSeek's config under metadata/, the
+    compressed expert scales stored under their own names in tensors/."""
+    (root / "metadata").mkdir(parents=True)
+    (root / "tensors").mkdir()
+    (root / "build-contract.json").write_text("{}")
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema": "lil-mxfp4-csf-checkpoint/1",
+                "metadata_sha256": {},
+                "shards": [],
+            }
+        )
+    )
+    (root / "metadata" / "config.json").write_text(
+        json.dumps(
+            {
+                "architectures": ["DeepseekV41ForCausalLM"],
+                "model_type": "deepseek_v41",
+                "quantization_config": {
+                    "quant_method": "fp8",
+                    "activation_scheme": "dynamic",
+                    "weight_block_size": [32, 32],
+                    "scale_fmt": "ue8m0",
+                    "expert_dtype": "fp4",
+                },
+            }
+        )
+    )
+    (root / "metadata" / "model.safetensors.index.json").write_text(
+        json.dumps({"weight_map": {"layers.6.ffn.experts.0.w1.scale": "x"}})
+    )
+    (root / "metadata" / "tokenizer.json").write_text("{}")
+    expert = "layers.6.ffn.experts.0.w1"
+    header = {
+        f"{expert}.weight": {"dtype": "U8", "shape": [2], "data_offsets": [0, 2]},
+        f"{expert}.scale.mxfp4_csf_fixed": {
+            "dtype": "U8",
+            "shape": [2],
+            "data_offsets": [2, 4],
+        },
+        f"{expert}.scale.mxfp4_csf_exceptions": {
+            "dtype": "U32",
+            "shape": [1],
+            "data_offsets": [4, 8],
+        },
+        "layers.6.attn.wo.weight": {
+            "dtype": "BF16",
+            "shape": [2],
+            "data_offsets": [8, 12],
+        },
+    }
+    raw = json.dumps(header).encode()
+    (root / "tensors" / "model-00001-of-00001.safetensors").write_bytes(
+        len(raw).to_bytes(8, "little") + raw + bytes(12)
+    )
+    return root
+
+
+def test_contract_csf_reader_serves_a_mxfp4_container_in_the_hf_layout(
+    tmp_path, monkeypatch
+):
+    """A vLLM whose MXFP4-CSF loader reads the Hugging Face-layout contract
+    gets a config.json naming the scale encoding, an index of the stored
+    tensors and the linked shards; the loader's own names are kept."""
+    monkeypatch.setattr(launcher, "installed_mxfp4_csf_contract", lambda: True)
+    monkeypatch.setattr(launcher, "CSF_SERVING_ROOT", tmp_path / "serving")
+    root = _mxfp4_csf_container(tmp_path / "snapshot")
+    _fake_hub(monkeypatch, lambda *a, **kw: str(root))
+    plan = resolve("ds41-flash", "rtx-pro-6000-pcie", env={})
+
+    prepare_csf_checkpoint(plan)
+
+    serving = Path(plan.values["model"])
+    assert serving.parent == tmp_path / "serving"
+    assert serving.name.endswith("-contract")
+    assert plan.argv[plan.argv.index("--quantization") + 1] == "mxfp4_csf"
+    assert plan.argv[plan.argv.index("--load-format") + 1] == "mxfp4_csf"
+    assert "--revision" not in plan.argv
+    quant = json.loads((serving / "config.json").read_text())["quantization_config"]
+    assert quant == {
+        "quant_method": "mxfp4_csf",
+        "activation_scheme": "dynamic",
+        "weight_block_size": [32, 32],
+        "scale_fmt": "ue8m0",
+        "expert_dtype": "fp4",
+        "format_version": 1,
+        "checkpoint_root": str(serving),
+        "weight_scale_encoding": "csf",
+    }
+    shard = "tensors/model-00001-of-00001.safetensors"
+    index = json.loads((serving / "model.safetensors.index.json").read_text())
+    assert (
+        index["weight_map"]["layers.6.ffn.experts.0.w1.scale.mxfp4_csf_fixed"] == shard
+    )
+    assert index["weight_map"]["layers.6.attn.wo.weight"] == shard
+    assert index["metadata"]["total_size"] == 12
+    assert (serving / shard).is_file()
+    assert (serving / "tokenizer.json").is_file()
+    assert plan.target_identity["revision"] == ""
+
+    # Without the contract reader the container keeps its legacy serving files.
+    monkeypatch.setattr(launcher, "installed_mxfp4_csf_contract", lambda: False)
+    plan = resolve("ds41-flash", "rtx-pro-6000-pcie", env={})
+    prepare_csf_checkpoint(plan)
+    legacy = Path(plan.values["model"])
+    assert not legacy.name.endswith("-contract")
+    assert (
+        "weight_scale_encoding"
+        not in json.loads((legacy / "config.json").read_text())["quantization_config"]
+    )
 
 
 def test_csf_identity_follows_the_manifest_not_the_location(tmp_path, monkeypatch):
