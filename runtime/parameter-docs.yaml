@@ -1079,7 +1079,8 @@ options:
       ds4-vision: >-
         DeepSeek-V4-Flash Vision uses temperature 1.0 and top_p 0.95 from its source launcher.
       ds41-flash: >-
-        DeepSeek-V4.1-Flash uses temperature 1.0 and top_p 0.95 from its source launcher.
+        DeepSeek-V4.1-Flash uses temperature 1.0 and top_p 1.0, the sampling the DeepSeek-V4.1-Flash-1017
+        model card recommends; the first V4.1-Flash card allowed top_p 0.95 or 1.0 and the profile used 0.95.
       mimo26-flash: >-
         MiMo-V2.6-Flash uses temperature 1.0 and top_p 0.95 from its source launcher; top_p 1.0 makes
         the model ramble.
