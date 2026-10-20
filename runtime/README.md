@@ -452,9 +452,10 @@ time per step is the same.
   own, such as `glm53-tp2` (FP4-CSF), serves that checkpoint and refuses a
   `CHECKPOINT` of the other kind.
 
-GLM and DeepSeek retain the source launchers' temperature 1/top-p 0.95
-server defaults. Explicit generation configuration replaces these defaults;
-request sampling remains authoritative. GLM-5.3-Flash sets
+GLM, DeepSeek-V4 and MiMo retain the source launchers' temperature 1/top-p 0.95
+server defaults; DeepSeek-V4.1-Flash serves temperature 1/top-p 1, the sampling
+the DeepSeek-V4.1-Flash-1017 model card recommends. Explicit generation
+configuration replaces these defaults; request sampling remains authoritative. GLM-5.3-Flash sets
 `reasoning_effort=max` (at `high` it confused near-duplicate record IDs in
 516K-token lookups) and GLM-5.3 keeps `high`; both set `clear_thinking=false`. No profile changes target weight or KV precision
 to manufacture a speedup.
