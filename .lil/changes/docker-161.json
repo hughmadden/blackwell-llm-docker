@@ -1,0 +1,19 @@
+{
+  "schema": "local-inference-release-change/v1",
+  "id": "docker-161",
+  "category": "fix",
+  "summary": "DeepSeek-V4.1-Flash serves top_p 1.0, the sampling the DeepSeek-V4.1-Flash-1017 model card recommends",
+  "models": [
+    "DeepSeek-V4.1-Flash"
+  ],
+  "compatibility": "The server default top_p of PROFILE=ds41-flash changes from 0.95 to 1.0; temperature stays 1.0. Requests that send their own top_p are unaffected. Overriding override-generation-config with {temperature 1.0, top_p 0.95}, as any profile value is overridden, restores the previous default.",
+  "details": [
+    "The profile carried override-generation-config {temperature 1.0, top_p 0.95} from its source launcher. The first DeepSeek-V4.1-Flash model card recommended top_p 0.95 or 1.0; the DeepSeek-V4.1-Flash-1017 card, served since docker-160, recommends top_p 1.0 only.",
+    "The 1017 checkpoints ship no generation_config.json and the profile keeps generation-config vllm, so this override is the only source of the server's sampling defaults.",
+    "parameter-docs and the runtime README describe the DeepSeek-V4.1-Flash defaults; GLM, DeepSeek-V4 and MiMo keep temperature 1.0, top_p 0.95."
+  ],
+  "pull_requests": [
+    161
+  ],
+  "requires": []
+}
