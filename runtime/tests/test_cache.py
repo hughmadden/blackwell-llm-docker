@@ -226,6 +226,16 @@ def test_ds41_external_cache_keeps_sliding_window_and_engram_independent():
     assert disk.cache_service.identity_required
 
 
+def test_ds41_disk_tier_evicts_in_small_lru_passes():
+    disk = resolve("ds41-flash", env={"LMCACHE_MODE": "disk"})
+    index = disk.cache_service.argv.index("--l2-adapter")
+    assert json.loads(disk.cache_service.argv[index + 1])["eviction"] == {
+        "eviction_policy": "LRU",
+        "trigger_watermark": 0.9,
+        "eviction_ratio": 0.02,
+    }
+
+
 @pytest.mark.parametrize("identifier", ["qwen38-flash-next", "ds41-flash"])
 def test_cache_transfer_modes_require_the_model_contract(identifier):
     with pytest.raises(ConfigError, match="engine-driven"):
